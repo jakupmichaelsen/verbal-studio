@@ -80,7 +80,7 @@ enum Pane {
 struct App {
     audio_path: Option<PathBuf>,
     audio_player: Option<AudioPlayer>,
-    assignment_path: Option<PathBuf>,
+    requirements_path: Option<PathBuf>,
     srt_path: Option<PathBuf>,
     requirements: Vec<Requirement>,
     segments: Vec<Segment>,
@@ -89,7 +89,7 @@ struct App {
     pane: Pane,
     editing_note: bool,
     message: String,
-    assessment_model: String,
+    model: String,
     feedback_markdown: String,
     feedback_scroll: u16,
 }
@@ -104,9 +104,8 @@ struct AudioPlayer {
 struct Args {
     audio: Option<PathBuf>,
     srt: Option<PathBuf>,
-    assignment: Option<PathBuf>,
-    transcription_model: String,
-    assessment_model: String,
+    requirements: Option<PathBuf>,
+    model: String,
     auto_assess: bool,
     language: Option<String>,
     prompt: Option<String>,
@@ -171,31 +170,49 @@ fn main() -> io::Result<()> {
 
 fn parse_args() -> Args {
     let mut args = Args {
-        transcription_model: String::from("whisper-1"),
-        assessment_model: String::from("gpt-4.1-mini"),
+        model: String::from("gpt-4.1-mini"),
         ..Args::default()
     };
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
-            "--audio" | "-a" => args.audio = iter.next().map(PathBuf::from),
-            "--srt" | "-s" => args.srt = iter.next().map(PathBuf::from),
-            "--assignment" | "-r" => args.assignment = iter.next().map(PathBuf::from),
-            "--transcription-model" | "-m" => {
+            "--requirements" | "-r" => args.requirements = iter.next().map(PathBuf::from),
+            "--auto" | "-a" => args.auto_assess = true,
+            "--model" | "-m" => {
                 if let Some(model) = iter.next() {
-                    args.transcription_model = model;
+                    args.model = model;
                 }
             }
-            "--assessment-model" => {
-                if let Some(model) = iter.next() {
-                    args.assessment_model = model;
-                }
-            }
-            "--auto-assess" => args.auto_assess = true,
             "--language" | "-l" => args.language = iter.next(),
             "--prompt" | "-p" => args.prompt = iter.next(),
-            value if !value.starts_with('-') && args.audio.is_none() => {
-                args.audio = Some(PathBuf::from(value));
+            value if !value.starts_with('-') => {
+                let path = PathBuf::from(&value);
+                let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+                match ext.as_deref() {
+                    Some("srt") => {
+                        if args.srt.is_none() {
+                            args.srt = Some(path);
+                        } else if args.audio.is_none() {
+                            args.audio = Some(path);
+                        }
+                    }
+                    Some("mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma") => {
+                        if args.audio.is_none() {
+                            args.audio = Some(path);
+                        } else if args.srt.is_none() {
+                            args.srt = Some(path);
+                        }
+                    }
+                    _ => {
+                        if args.requirements.is_none() {
+                            args.requirements = Some(path);
+                        } else if args.audio.is_none() {
+                            args.audio = Some(path);
+                        } else if args.srt.is_none() {
+                            args.srt = Some(path);
+                        }
+                    }
+                }
             }
             _ => {}
         }
@@ -206,7 +223,7 @@ fn parse_args() -> Args {
 fn normalize_args(args: &mut Args) -> io::Result<()> {
     args.audio = normalize_optional_path(args.audio.take())?;
     args.srt = normalize_optional_path(args.srt.take())?;
-    args.assignment = normalize_optional_path(args.assignment.take())?;
+    args.requirements = normalize_optional_path(args.requirements.take())?;
     Ok(())
 }
 
@@ -269,7 +286,7 @@ fn ensure_transcript(args: &mut Args) -> io::Result<()> {
         .arg("--output")
         .arg(&srt_path)
         .arg("--model")
-        .arg(&args.transcription_model);
+        .arg("whisper-1");
 
     if let Some(language) = args.language.as_ref() {
         command.arg("--language").arg(language);
@@ -324,13 +341,13 @@ impl App {
         };
 
         let requirements = args
-            .assignment
+            .requirements
             .as_ref()
             .and_then(|path| fs::read_to_string(path).ok())
             .map(|text| parse_assignment(&text))
             .unwrap_or_else(|| {
                 vec![Requirement {
-                    title: String::from("Load an assignment with --assignment file.md"),
+                    title: String::from("Load requirements with -r file.md"),
                     body: String::from(
                         "Each heading, bullet, or numbered line becomes a requirement.",
                     ),
@@ -349,13 +366,14 @@ impl App {
             .unwrap_or_default();
 
         if segments.is_empty() {
-            message = String::from("No transcript loaded. Start with --srt transcript.srt");
+            message =
+                String::from("No transcript loaded. Provide an audio file to auto-transcribe.");
         }
 
         Self {
             audio_path: args.audio,
             audio_player,
-            assignment_path: args.assignment,
+            requirements_path: args.requirements,
             srt_path: args.srt,
             requirements,
             segments,
@@ -364,7 +382,7 @@ impl App {
             pane: Pane::Requirements,
             editing_note: false,
             message,
-            assessment_model: args.assessment_model,
+            model: args.model,
             feedback_markdown: String::new(),
             feedback_scroll: 0,
         }
@@ -528,7 +546,7 @@ impl App {
         let mut child = match Command::new("python3")
             .arg(auto_assess_script_path())
             .arg("--model")
-            .arg(&self.assessment_model)
+            .arg(&self.model)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -599,10 +617,10 @@ impl App {
         }
 
         let assignment_instructions = self
-            .assignment_path
+            .requirements_path
             .as_ref()
             .and_then(|path| fs::read_to_string(path).ok())
-            .unwrap_or_else(|| String::from("No assignment instructions file was loaded."));
+            .unwrap_or_else(|| String::from("No requirements file was loaded."));
 
         let payload = FeedbackRequest {
             assignment_instructions,
@@ -617,7 +635,7 @@ impl App {
         let mut child = match Command::new("python3")
             .arg(generate_feedback_script_path())
             .arg("--model")
-            .arg(&self.assessment_model)
+            .arg(&self.model)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -682,8 +700,8 @@ impl App {
                 .audio_path
                 .as_ref()
                 .map(|path| path.display().to_string()),
-            assignment_path: self
-                .assignment_path
+            requirements_path: self
+                .requirements_path
                 .as_ref()
                 .map(|path| path.display().to_string()),
             srt_path: self
@@ -801,7 +819,7 @@ impl AudioPlayer {
 #[derive(Serialize)]
 struct AssessmentExport {
     audio_path: Option<String>,
-    assignment_path: Option<String>,
+    requirements_path: Option<String>,
     srt_path: Option<String>,
     requirements: Vec<Requirement>,
     segments: Vec<Segment>,
@@ -938,12 +956,12 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| "no srt".into());
-    let assignment = app
-        .assignment_path
+    let requirements = app
+        .requirements_path
         .as_ref()
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| "no assignment".into());
+        .unwrap_or_else(|| "no requirements".into());
 
     let line = Line::from(vec![
         Span::styled(
@@ -955,7 +973,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw(" | "),
         Span::styled(srt, Style::default().fg(Color::White)),
         Span::raw(" | "),
-        Span::styled(assignment, Style::default().fg(Color::White)),
+        Span::styled(requirements, Style::default().fg(Color::White)),
     ]);
 
     frame.render_widget(
@@ -1143,7 +1161,7 @@ fn draw_feedback(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
-    let help = " Tab pane | j/k move | Enter open/play/edit | Space pause/resume | l link | a auto | f feedback | n note | 1/2/3/+ /w/m status | e md | s json | q / Ctrl+c quit ";
+    let help = " Tab pane | j/k move | Enter open/play/edit | Space pause/resume | l link | a auto | f feedback | n note | 1/2/3/+ /w/m status | e md | s json | q / Ctrl+c quit | -r/-a/-m ";
     let audio_status = app
         .audio_player
         .as_ref()

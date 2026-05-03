@@ -5,7 +5,7 @@ Repository and deployment slug: `verbal-studio`.
 Keyboard-first local assessment tool for oral feedback:
 
 ```text
-assignment requirement -> transcript evidence -> teacher note -> feedback export
+requirements -> transcript evidence -> teacher note -> feedback export
 ```
 
 This prototype is a Rust terminal app built with `ratatui`. Pass an audio file,
@@ -28,61 +28,56 @@ python3 -m pip install --upgrade openai
 ## Run
 
 ```bash
-cargo run -- \
-  --audio path/to/presentation.mp3 \
-  --assignment path/to/requirements.md
+cargo run -- path/to/presentation.mp3 -r path/to/requirements.md
 ```
 
-Add `--auto-assess` to ask OpenAI to pre-link transcript evidence to the
+Add `-a` to ask OpenAI to pre-link transcript evidence to the
 requirements before the TUI opens:
 
 ```bash
-cargo run -- path/to/presentation.mp3 \
-  --assignment path/to/requirements.md \
-  --auto-assess
+cargo run -- path/to/presentation.mp3 -r path/to/requirements.md -a
 ```
 
 The auto-assessment is a review starter, not a final grade. It suggests status,
 teacher notes, and transcript evidence links that should be checked by a human.
-Use `--assessment-model` or `OPENAI_ASSESSMENT_MODEL` to change the model.
+Use `-m` or `OPENAI_ASSESSMENT_MODEL` to change the model (default: `gpt-4.1-mini`).
 
 After reviewing the evidence links and notes, press `f` in the TUI to generate
-the feedback section. This uses the full assignment file, including the custom
+the feedback section. This uses the full requirements file, including the custom
 feedback instructions, plus the current reviewed notes/evidence.
 
 If `path/to/presentation.srt` already exists, it is loaded. If it does not exist,
-VerbalStudio calls:
-
-```bash
-python3 scripts/transcribe.py path/to/presentation.mp3 \
-  --format srt \
-  --output path/to/presentation.srt
-```
+VerbalStudio calls `scripts/transcribe.py` internally.
 
 You can still provide an explicit transcript:
 
 ```bash
-cargo run -- \
-  --audio path/to/presentation.mp3 \
-  --srt path/to/custom-transcript.srt \
-  --assignment path/to/requirements.md
+cargo run -- path/to/presentation.mp3 transcript.srt -r path/to/requirements.md
 ```
 
 For mixed-language speech, leave `--language` unset or add a prompt:
 
 ```bash
-cargo run -- presentation.mp3 \
-  --assignment requirements.md \
-  --prompt "The presentation is mostly English but may include accidental Danish words and names."
+cargo run -- presentation.mp3 -r requirements.md \
+  -p "The presentation is mostly English but may include accidental Danish words and names."
 ```
 
 Try the sample data:
 
 ```bash
-cargo run -- \
-  --srt examples/transcript.srt \
-  --assignment examples/assignment.md
+cargo run -- examples/transcript.srt -r examples/assignment.md
 ```
+
+## CLI Flags
+
+| Flag | Purpose |
+|---|---|
+| `-r` / `--requirements` | Requirements/assignment markdown file |
+| `-a` / `--auto` | Auto-assess before opening TUI |
+| `-m` / `--model` | GPT model for assessment/feedback (default: `gpt-4.1-mini`) |
+| `-l` / `--language` | Whisper language hint |
+| `-p` / `--prompt` | Whisper prompt context |
+| Positional files | Auto-routed by extension (`.srt` → transcript, audio → audio, other → requirements) |
 
 ## Keys
 
@@ -108,7 +103,7 @@ q          quit
 
 ## Current Shape
 
-- Requirements are parsed from headings, bullets, and non-empty assignment lines.
+- Requirements are parsed from headings, bullets, and non-empty files.
 - MP3/audio input can automatically create a same-name `.srt` through `scripts/transcribe.py`.
 - OpenAI auto-assessment can suggest requirement statuses, notes, and evidence links for review.
 - OpenAI feedback generation can turn reviewed notes into the requested feedback format. Grades are validated against the Danish 7-step scale (-3, 00, 02, 4, 7, 10, 12).
@@ -123,7 +118,7 @@ The Rust TUI is the fast workflow lab. The core data shape should stay portable:
 
 ```text
 audio path
-assignment path
+requirements path
 srt path
 requirements[]
 segments[]
