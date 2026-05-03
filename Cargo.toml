@@ -1,0 +1,13 @@
+[package]
+name = "verbal-studio"
+version = "0.1.0"
+edition = "2024"
+description = "Keyboard-first terminal workflow for oral presentation assessment"
+readme = "README.md"
+
+[dependencies]
+crossterm = "0.29"
+ratatui = "0.29"
+rodio = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

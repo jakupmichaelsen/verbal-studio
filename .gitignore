@@ -1,0 +1,34 @@
+# Rust
+/target/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local environment and secrets
+.env
+.env.*
+
+# Local media and generated transcript files
+*.mp3
+*.wav
+*.m4a
+*.mp4
+*.mov
+*.srt
+*.vtt
+!examples/transcript.srt
+
+# VerbalStudio generated exports
+verbalstudio-assessment.json
+verbalstudio-feedback.md
+**/verbalstudio-assessment.json
+**/verbalstudio-feedback.md
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
