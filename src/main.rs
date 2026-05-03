@@ -153,6 +153,7 @@ struct FeedbackRequest {
 
 #[derive(Deserialize)]
 struct FeedbackResponse {
+    grade: String,
     feedback_markdown: String,
 }
 
@@ -653,10 +654,14 @@ impl App {
         let parsed = serde_json::from_slice::<FeedbackResponse>(&output.stdout);
         match parsed {
             Ok(parsed) => {
-                self.feedback_markdown = parsed.feedback_markdown;
+                let mut markdown = parsed.feedback_markdown;
+                if !markdown.starts_with(&format!("Grade: {}", parsed.grade)) {
+                    markdown = format!("Grade: {}\n\n{}", parsed.grade, markdown);
+                }
+                self.feedback_markdown = markdown;
                 self.feedback_scroll = 0;
                 self.pane = Pane::Feedback;
-                self.message = String::from("Generated feedback section");
+                self.message = format!("Generated feedback — Grade: {}", parsed.grade);
             }
             Err(error) => {
                 self.message = format!("Could not parse feedback response: {error}");
@@ -1138,7 +1143,7 @@ fn draw_feedback(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
-    let help = " Tab pane | j/k move | Enter open/play/edit | Space pause/resume | l link | a auto | f feedback | n note | 1/2/3 status | e md | s json | q quit ";
+    let help = " Tab pane | j/k move | Enter open/play/edit | Space pause/resume | l link | a auto | f feedback | n note | 1/2/3/+ /w/m status | e md | s json | q / Ctrl+c quit ";
     let audio_status = app
         .audio_player
         .as_ref()

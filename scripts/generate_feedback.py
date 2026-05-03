@@ -26,8 +26,13 @@ except ImportError as exc:
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["feedback_markdown"],
+    "required": ["grade", "feedback_markdown"],
     "properties": {
+        "grade": {
+            "type": "string",
+            "enum": ["-3", "00", "02", "4", "7", "10", "12"],
+            "description": "Valid Danish 7-step grade. Only use grades that appear in the assignment calibration.",
+        },
         "feedback_markdown": {
             "type": "string",
             "description": "Markdown feedback following the assignment output instructions.",
@@ -66,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
                     "Follow the assignment instructions exactly, especially the requested output format. "
                     "Use the reviewed assessment notes and linked evidence as your source of truth. "
                     "Do not invent theme texts, episode references, or strengths not supported by the notes. "
+                    "The grade must be a valid Danish 7-step grade (-3, 00, 02, 4, 7, 10, 12). "
+                    "Match the grade to the calibration ranges in the assignment. "
                     "The spoken feedback section must be natural Danish that a teacher could say aloud. "
                     "Be supportive, honest, concise, and concrete."
                 ),
@@ -73,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "role": "user",
                 "content": (
-                    "Return JSON with one field: feedback_markdown. "
+                    "Return JSON with two fields: grade (valid Danish 7-step) and feedback_markdown. "
                     "The markdown must include the standard feedback sections and a spoken Danish feedback section.\n\n"
                     "FULL ASSIGNMENT / CUSTOM GPT INSTRUCTIONS:\n"
                     f"{payload.get('assignment_instructions', '')}\n\n"
@@ -100,7 +107,12 @@ def main(argv: list[str] | None = None) -> int:
                     text += getattr(content, "text", "")
 
     parsed = json.loads(text)
-    print(json.dumps(parsed, ensure_ascii=False))
+    grade = parsed.get("grade", "")
+    feedback = parsed.get("feedback_markdown", "")
+    if not feedback.startswith(f"Grade: {grade}"):
+        feedback = f"Grade: {grade}\n\n{feedback}"
+    output = {"feedback_markdown": feedback}
+    print(json.dumps(output, ensure_ascii=False))
     return 0
 
 

@@ -111,7 +111,7 @@ q          quit
 - Requirements are parsed from headings, bullets, and non-empty assignment lines.
 - MP3/audio input can automatically create a same-name `.srt` through `scripts/transcribe.py`.
 - OpenAI auto-assessment can suggest requirement statuses, notes, and evidence links for review.
-- OpenAI feedback generation can turn reviewed notes into the requested feedback format.
+- OpenAI feedback generation can turn reviewed notes into the requested feedback format. Grades are validated against the Danish 7-step scale (-3, 00, 02, 4, 7, 10, 12).
 - SRT transcript chunks are parsed into timestamped segments.
 - Linked evidence is stored by segment index on each requirement.
 - Playback is handled inside the TUI process through `rodio`; no external player window is opened.
